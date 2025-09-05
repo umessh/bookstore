@@ -1,0 +1,65 @@
+@startuml
+left to right direction
+skinparam actorStyle awesome
+
+actor Customer
+
+package "Book Catalogue Service" {
+    usecase "Search/Browse Books" as U1
+    usecase "Select Store" as U2
+}
+
+package "Order Service" {
+    usecase "Add Digital Book to Cart" as U3
+    usecase "Add Physical Book to Cart (Delivery)" as U4
+    usecase "Add Physical Book to Cart (Store Pickup)" as U5
+    usecase "Checkout and Pay" as U6
+}
+
+package "Order Processing Service" {
+    usecase "Deliver Order (Delivery)" as U7
+    usecase "Pick Up Order (Store)" as U8
+}
+
+package "Content Serving Service" {
+    usecase "Receive Digital Book" as U9
+}
+
+package "Notifications Service" {
+    usecase "Order Notifications" as U10
+    usecase "Pickup Ready Notification" as U11
+    usecase "Delivery Status Notification" as U12
+}
+
+package "Webhook Notifications (Third Party) Service" {
+    usecase "Delivery Status Notification" as U13
+}
+
+' Customer interactions
+Customer -- U1
+Customer -- U2
+Customer -- U3
+Customer -- U4
+Customer -- U5
+Customer -- U6
+
+' Includes and extends
+U3 .> U6 : <<include>>
+U4 .> U6 : <<include>>
+U5 .> U6 : <<include>>
+U5 .> U2 : <<include>>
+
+U3 .> U9 : <<extend>>
+U4 .> U7 : <<extend>>
+U5 .> U8 : <<extend>>
+
+' Service output triggers/notifications (dashed)
+U6 ..> U10 : triggers
+U8 ..> U11 : triggers
+U7 ..> U12 : triggers
+U9 ..> U10 : triggers
+
+' Webhook triggers (if intended; otherwise remove or clarify)
+U13 ..> U7 : triggers
+
+@enduml
