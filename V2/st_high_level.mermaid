@@ -1,0 +1,64 @@
+flowchart LR
+
+  C[Customer]:::actor
+  Carrier[Carrier / 3PL API]:::actor
+
+  subgraph "New E-Commerce Capability  (SaaS + Serverless)"
+    direction LR
+    CF[Amazon CloudFront]:::aws
+    Cognito[Cognito SSO  IAM]:::aws
+    Storefront[E-Commerce SaaS Shopify Plus]
+    EB[Amazon EventBridge\nSaaS Partner Bus]:::aws
+    Lambda[Lambda – Order Router]:::aws
+    SF[Step Functions –\nFulfilment WF]:::aws
+    SNS[SNS / Pinpoint]:::aws
+    Dynamo[DynamoDB Product + Order cache]:::aws
+    S3[S3  e-Book objects]:::aws
+    Kinesis[Kinesis Firehose]:::aws
+    AppFlow[Amazon AppFlow]:::aws
+  end
+
+  ERP[Existing ERP]:::legacy
+  CRM[Existing CRM]:::legacy
+  DW[Enterprise Data Warehouse]:::legacy
+
+
+  C -- "1  Browse / Search" --> CF
+  CF --> Storefront
+  C -- "2  Sign-in (OIDC)" --> Cognito
+  Cognito --> Storefront
+  C -- "3  Add to Cart / Checkout" --> Storefront
+
+  Storefront -- "4  Payment Intent / Capture" --> PG
+
+
+  Storefront -. "OrderPlaced\nCartUpdated" .-> EB
+  EB -.-> Lambda
+  Lambda -->|start| SF
+
+
+  SF -->|"5  Reserve Stock"| ERP
+  SF -->|"6  Create Customer/Order"| CRM
+  SF -->|"7  Book Shipment"| Carrier
+  SF -->|"8  Send Notifications"| SNS
+  SNS --> C
+
+
+  Storefront -->|"Presigned URL"| S3
+  C -- "9  Download" --> S3
+
+
+  Storefront -->|"Catalog sync"| Dynamo
+  AppFlow --> ERP
+  AppFlow --> CRM
+  AppFlow --> Storefront
+
+
+  EB -. "stream" .-> Kinesis
+  Kinesis --> DW
+
+
+  classDef actor   fill:#ffffff,stroke:#000,stroke-width:2px;
+  classDef aws     fill:#f3f3ff,stroke:#555;
+  classDef legacy  fill:#fff5e6,stroke:#555;
+  linkStyle 9,10,11,12,16,18 stroke-dasharray:5 5;

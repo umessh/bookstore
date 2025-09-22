@@ -1,0 +1,52 @@
+sequenceDiagram
+    autonumber
+    participant Shop as SaaS Storefront
+    participant PartnerBus as EventBridge (SaaS Partner Bus)
+    participant EBRule as EB Rule (OrderPlaced)
+    participant Lambda as Lambda "OrderRouter"
+    participant SF as Step Functions "FulfilmentWF"
+    participant ERP as ERP REST API<br/>(via AWS PrivateLink)
+    participant CRM as CRM REST API
+    participant Carrier as Carrier API
+    participant SNS as Amazon SNS
+    participant Kinesis as Kinesis Firehose
+    participant DW as Enterprise DW
+
+    note over Shop: Customer clicks “Pay now” in checkout
+    Shop-->>PartnerBus: ① PutEvents<br/>detailType=OrderPlaced<br/>payload = CloudEvents JSON<br/>{orderId, items[],…}
+    rect rgb(224,246,255)
+      note over PartnerBus: Async publish<br/>(no retry logic in Shop)
+      PartnerBus-->>EBRule: ② Event delivery
+    end
+
+    EBRule-->>Lambda: ③ Invoke (JSON payload)
+    note right of Lambda: • Adds idempotency key<br/>• Maps SaaS schema ➜ internal<br/>• Stores raw event in S3/Dynamo (DLQ)
+
+    Lambda-->>SF: ④ StartExecution<br/>input={orderDTO}
+
+    par “Physical items?”
+      SF-->>ERP: ⑤ Reserve stock / Create SO (HTTPS POST JSON)
+      ERP-->>SF: 200 OK <br/>{soNumber}
+      alt ERP error
+        SF-->>ERP: Retry with back-off (3x)
+        SF-->>DW: Emit “FulfilmentFailed”
+      end
+      SF-->>Carrier: ⑥ Book Shipment (API JSON)
+      Carrier-->>SF: Tracking# / label URL
+    and “Digital items?”
+      SF-->>Shop: ⑦ Request pre-signed S3 link (GraphQL)
+      Shop-->>SF: {url,expiry}
+    end
+
+    SF-->>CRM: ⑧ Upsert Customer + Order (HTTPS PATCH JSON)
+    CRM-->>SF: 204 No Content
+
+    SF-->>SNS: ⑨ Publish notification topic<br/>{orderStatus,tracking?}
+    SNS-->>Customer: e-mail / SMS / push (async)
+
+    SF-->>Kinesis: ⑩ PutRecord<br/>“OrderFulfilled” event
+    Kinesis-->>DW: Stream ingest (sub-minute)
+
+    SF-->>PartnerBus: ⑪ PutEvents { orderStatus:"FULFILLED" }
+
+    note over SF: Saga completes → Execution history retained 90 days
